@@ -13,8 +13,9 @@
 For development or to use the latest optimized version:
 
 ```bash
-# Navigate to the package directory
-cd d:\nodeprog\KotakAPIModule\kotak_api_wn
+# Clone the repository and navigate to it
+git clone https://github.com/sacbhatia/KotakAPIModule.git
+cd KotakAPIModule
 
 # Install in development mode (editable)
 pip install -e .
@@ -102,8 +103,8 @@ print("✓ NeoAPI client created successfully")
 
 ### Import Error: Module Not Found
 ```bash
-# Ensure you're in the correct directory
-cd d:\nodeprog\KotakAPIModule\kotak_api_wn
+# Ensure you're in the repository root directory
+cd KotakAPIModule
 pip install -e .
 ```
 
