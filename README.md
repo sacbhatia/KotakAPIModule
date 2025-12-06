@@ -93,4 +93,8 @@ MIT License - see [LICENSE](LICENSE) for details.
 
 ## ⚠️ Disclaimer
 
-This software is modification of original release from Kotak Securities.
+This software is a modified version of the original Kotak Neo API client, optimized for performance in a few high-impact areas including JSON serialization, HTTP connection pooling, API instance caching, and validation lookups. The original code belongs to **Kotak Securities** and can be found at:
+
+🔗 **Original Repository:** [https://github.com/Kotak-Neo/kotak-neo-api](https://github.com/Kotak-Neo/kotak-neo-api)
+
+This is an unofficial modification and is not affiliated with or endorsed by Kotak Securities.
