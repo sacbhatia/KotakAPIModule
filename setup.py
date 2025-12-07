@@ -26,8 +26,8 @@ def get_long_description():
 setup(
     name='kotak_api_wn',
     version=get_version(),
-    author='Kotak Securities',
-    author_email='support@kotaksecurities.com',
+    author='',
+    author_email='',
     description='High-performance Kotak Neo Trading API Client with optimized latency',
     long_description=get_long_description(),
     long_description_content_type='text/markdown',
