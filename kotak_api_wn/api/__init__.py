@@ -13,3 +13,5 @@ from kotak_api_wn.api.margin_api import MarginAPI
 from kotak_api_wn.api.scrip_master_api import ScripMasterAPI
 from kotak_api_wn.api.limits_api import LimitsAPI
 from kotak_api_wn.api.logout_api import LogoutAPI
+from kotak_api_wn.api.totp_api import TotpAPI
+from kotak_api_wn.api.quotes_neo_symbol_api import QuotesAPI

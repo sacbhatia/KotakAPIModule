@@ -32,7 +32,7 @@ from kotak_api_wn import settings
 from kotak_api_wn import req_data_validation
 
 # Version
-__version__ = "1.0.0"
+__version__ = "2.0.0"
 
 # Module level imports for convenience
 __all__ = [

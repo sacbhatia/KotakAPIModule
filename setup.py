@@ -26,7 +26,7 @@ def get_long_description():
 setup(
     name='kotak_api_wn',
     version=get_version(),
-    author='',
+    author='wavenodes',
     author_email='',
     description='High-performance Kotak Neo Trading API Client with optimized latency',
     long_description=get_long_description(),
@@ -44,6 +44,12 @@ setup(
         'six>=1.16.0',
         'urllib3>=1.26.0',
         'PyJWT>=2.6.0',
+        'bidict>=0.22.1',
+        'numpy>=2.1.0',
+        'pyjsparser>=2.7.1',
+        'python-dotenv>=1.0.0',
+        'websockets>=8.1',
+        'pandas>=2.2.3',
     ],
     extras_require={
         'fast': [

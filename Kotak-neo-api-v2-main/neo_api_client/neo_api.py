@@ -1,21 +1,8 @@
 import inspect
-from functools import lru_cache
 
-import kotak_api_wn
-from kotak_api_wn.api_client import ApiClient
-from kotak_api_wn.exceptions import ApiException, ApiValueError
-
-# Try to use orjson for faster JSON serialization
-try:
-    import orjson
-    def json_dumps(obj):
-        return orjson.dumps(obj).decode('utf-8')
-    def json_loads(s):
-        return orjson.loads(s)
-except ImportError:
-    import json
-    json_dumps = json.dumps
-    json_loads = json.loads
+import neo_api_client
+from neo_api_client import req_data_validation
+from neo_api_client.api_client import ApiClient
 
 
 class NeoAPI:
@@ -26,7 +13,7 @@ class NeoAPI:
 
         Attributes:
             environment (str): The environment for the API client.
-            configuration (kotak_api_wn.Configuration): The configuration for the API client.
+            configuration (neo_api_client.Configuration): The configuration for the API client.
             consumer_key (str): The consumer key for the API client.
             consumer_secret (str): The consumer secret for the API client.
             username (str): The username for the API client.
@@ -50,15 +37,16 @@ class NeoAPI:
                 Sets the edit token, SID, RID, and server ID in the configuration.
     """
 
-    def __init__(self, environment="uat", access_token=None, neo_fin_key=None, consumer_key=None, reuse_session=None):
+    def __init__(self, environment="uat", access_token=None, neo_fin_key=None, consumer_key=None):
         """
     Initializes the class and sets up the necessary configurations for the API client.
 
     Parameters:
     environment (str): The environment has to pass by user to connect 'UAT' or 'PROD'.
     access_token (str, optional): The access token used for authentication. Defaults to None.
-    neo_fin_key (str, optional): Finkey for tracking purpose
     consumer_key (str, optional): The consumer key used for authentication. Defaults to None.
+    consumer_secret (str, optional): The consumer secret used for authentication. Defaults to None.
+    neo_fin_key (str, optional): Finkey for tracking purpose
 
     Updates:
     self.on_message: sets the callback function for incoming messages for Websocket.
@@ -74,162 +62,51 @@ class NeoAPI:
         self.on_error = None
         self.on_close = None
         self.on_open = None
-        
-        # Cache for API instances to avoid repeated instantiation
-        self._api_cache = {}
 
         if not access_token:
-            kotak_api_wn.req_data_validation.validate_configuration(consumer_key)
-            self.configuration = kotak_api_wn.NeoUtility(consumer_key=consumer_key,
+            # neo_api_client.req_data_validation.validate_configuration(consumer_key, consumer_secret)
+            self.configuration = neo_api_client.NeoUtility(
+                # consumer_key=consumer_key, consumer_secret=consumer_secret,
                                                            host=environment)
             self.api_client = ApiClient(self.configuration)
-            # Session init commented out in v2
             # try:
-            #     session_init = kotak_api_wn.LoginAPI(self.api_client).session_init()
-            #     print(json_dumps({"data": session_init}))
+            #     session_init = neo_api_client.LoginAPI(self.api_client).session_init()
+            #     print(json.dumps({"data": session_init}))
             # except ApiException as ex:
             #     error = ex
-                
-        if reuse_session:
-            self.configuration = kotak_api_wn.NeoUtility(access_token=access_token, host=environment)
-            self.api_client = ApiClient(self.configuration)
-            self.configuration.bearer_token = reuse_session.get("access_token")
-            self.configuration.edit_token = reuse_session.get("session_token")
-            self.configuration.edit_sid = reuse_session.get("sid")
-            self.configuration.serverId = reuse_session.get("serverId")
-
         elif access_token:
-            self.configuration = kotak_api_wn.NeoUtility(access_token=access_token, host=environment)
+            self.configuration = neo_api_client.NeoUtility(access_token=access_token, host=environment)
             self.api_client = ApiClient(self.configuration)
-        
-        self.reuse_session = {"access_token":f"{self.configuration.bearer_token}",
-                            "session_token":f'{self.configuration.edit_token}',
-                            "sid":f"{self.configuration.edit_sid}",
-                            "serverId" : f"{self.configuration.serverId}",
-                            }
 
         self.NeoWebSocket = None
         self.configuration.neo_fin_key = neo_fin_key
         self.configuration.consumer_key = consumer_key
 
-    def _get_api(self, api_class):
-        """Get cached API instance or create new one. Reduces object instantiation overhead."""
-        if api_class not in self._api_cache:
-            self._api_cache[api_class] = api_class(self.api_client)
-        return self._api_cache[api_class]
-
-    def login(self, password=None, mobilenumber=None, userid=None, pan=None, mpin=None):
-        """
-        Logs in to the system by generating a view token using the provided mobile number and password.
-        Generates an OTP (One-Time Password) for the user's session.
-
-        Parameters:
-        password (str): The password of the user.
-        mobilenumber (str, optional): The mobile number of the user. Defaults to None.
-        userid (str, optional): The user ID of the user. Defaults to None.
-        pan (str, optional): The PAN (Permanent Account Number) of the user. Defaults to None.
-        Either of pan/mobilenumber/userid has to pass to login
-
-        Returns:
-            {'data': {'token': '','sid': '', 'rid': '', 'hsServerId': '',isUserPwdExpired': , 'caches': {
-        'baskets': '', 'lastUpdatedTS': '', 'multiplewatchlists': '', 'techchartpreferences': ''}, 'ucc': '',
-        'greetingName': '', 'isTrialAccount': , 'dataCenter': '', 'searchAPIKey': ''}}
-
-
-        Updates:
-        view_token: sets the view token obtained from the API response.
-        sid: sets the sid obtained from the API response.
-
-        Raises:
-        ApiException: if the view token or OTP generation fails.
-        """
-        if not mobilenumber and not userid and not pan:
-            error = {
-                'error': [{'code': '10300', 'message': 'Validation Errors! Any of Mobile Number, User Id and Pan has '
-                                                       'to pass as part of login'}]}
-            return error
-
-        view_token = self._get_api(kotak_api_wn.LoginAPI).generate_view_token(password=password, mobilenumber=mobilenumber,
-                                                                                  userid=userid, pan=pan, mpin=mpin)
-        if "error" not in view_token:
-            gen_otp = self._get_api(kotak_api_wn.LoginAPI).generate_otp()
-            # print(gen_otp)
-        else:
-            gen_otp = {'error': [{'code': '10522', 'message': 'Issues while generating OTP! Try to login again.'}]}
-        return view_token
-
-    def session_2fa(self, OTP):
-        """
-            Establishes a session with the API using the provided OTP.
-
-            Parameters:
-            OTP (str): The one-time password (OTP) for the user's session.
-
-            Returns: {'data': {'token': '', 'sid': '', 'rid': '', 'hsServerId': '', 'isUserPwdExpired': False,
-            'caches': {'baskets': '', 'lastUpdatedTS': '', 'multiplewatchlists': '', 'techchartpreferences': ''},
-            'ucc': '', 'greetingName': '', 'isTrialAccount': False, 'dataCenter': '', 'searchAPIKey': ''}}
-
-            Updates:
-            edit_token: sets the edit token obtained from the API response.
-        """
-        edit_token = self._get_api(kotak_api_wn.LoginAPI).login_2fa(OTP)
-
-        self.reuse_session = {"access_token":f"{self.configuration.bearer_token}",
-                            "session_token":f'{self.configuration.edit_token}',
-                            "sid":f"{self.configuration.edit_sid}",
-                            "serverId" : f"{self.configuration.serverId}",
-                            }
-
-        return edit_token
-
-    def totp_login(self, mobile_number=None, ucc=None, totp=None):
-        """
-        Logs in to the system by generating a view token using mobile_number, totp and ucc
-
-        Parameters:
-        mobile_number (str): The mobile number of the user
-        ucc (str): Unique Client Code
-        totp (str): The 6 digit code generated on the authenticator app
-
-        Returns:
-        dict: Response from the API
-        """
-        if not mobile_number or not ucc or not totp:
-            return {
-                'error': [{'message': 'Any of Mobile Number, UCC or totp is missing'}]
-            }
-        totp_login = self._get_api(kotak_api_wn.TotpAPI).totp_login(mobile_number=mobile_number, ucc=ucc, totp=totp)
-        return totp_login
-
-    def totp_validate(self, mpin=None):
-        """
-        Validates the TOTP with MPIN to generate trade token
-
-        Parameters:
-        mpin (str): MPIN for the neo account
-
-        Returns:
-        dict: Response from the API
-        """
-        if not mpin:
-            return {
-                'error': [{'message': 'MPIN is required'}]
-            }
-        totp_validate = self._get_api(kotak_api_wn.TotpAPI).totp_validate(mpin=mpin)
-
-        self.reuse_session = {"access_token": f"{self.configuration.bearer_token}",
-                              "session_token": f'{self.configuration.edit_token}',
-                              "sid": f"{self.configuration.edit_sid}",
-                              "serverId": f"{self.configuration.serverId}",
-                              }
-
-        return totp_validate
-
-    def place_order(self, exchange_segment, product, price, order_type, quantity, validity, trading_symbol,
-                    transaction_type, amo="NO", disclosed_quantity="0", market_protection="0", pf="N",
-                    trigger_price="0", tag=None, scrip_token=None, square_off_type=None, stop_loss_type=None,
-                    stop_loss_value=None, square_off_value=None, last_traded_price=None, trailing_stop_loss=None,
-                    trailing_sl_value=None):
+    def place_order(
+            self,
+            exchange_segment,
+            product,
+            price,
+            order_type,
+            quantity,
+            validity,
+            trading_symbol,
+            transaction_type,
+            amo="NO",
+            disclosed_quantity="0",
+            market_protection="0",
+            pf="N",
+            trigger_price="0",
+            tag=None,
+            scrip_token=None,
+            square_off_type=None,
+            stop_loss_type=None,
+            stop_loss_value=None,
+            square_off_value=None,
+            last_traded_price=None,
+            trailing_stop_loss=None,
+            trailing_sl_value=None,
+    ):
         """
             Places an order on the specified exchange segment and product, for a given trading symbol, transaction type,
             order type, quantity, and price.
@@ -249,14 +126,6 @@ class NeoAPI:
             pf (str, optional): Flag to indicate whether the order is a Portfolio order. Defaults to "N".
             trigger_price (str, optional): Trigger price for Stop Loss orders. Defaults to "0".
             tag (str, optional): Optional tag to be added to the order. Defaults to None.
-            scrip_token (str, optional): Applicable only for Bracket Order
-            square_off_type (str, optional): Applicable only for Bracket Order. Expected Values are 'Absolute' and 'Ticks'.
-            stop_loss_type (str, optional): Applicable only for Bracket Order. Expected Values are 'Absolute' and 'Ticks'.
-            stop_loss_value (str, optional): Applicable only for Bracket Order
-            square_off_value (str, optional): Applicable only for Bracket Order
-            last_traded_price (str, optional): Applicable only for Bracket Order
-            trailing_stop_loss (str, optional): Applicable only for Bracket Order. Expected Values are 'Y' and 'N'.
-            trailing_sl_value (str, optional): Applicable only for Bracket Order. Expected Values are 'Y' and 'N'.
 
             Returns:
             Success/Failure Response from the API
@@ -264,26 +133,37 @@ class NeoAPI:
         """
         if self.configuration.edit_token and self.configuration.edit_sid:
             try:
-                kotak_api_wn.req_data_validation.place_order_validation(exchange_segment, product, price, order_type,
+                req_data_validation.place_order_validation(exchange_segment, product, price, order_type,
                                                                           quantity, validity,
                                                                           trading_symbol, transaction_type)
 
-                exchange_segment = kotak_api_wn.settings.exchange_segment[exchange_segment]
-                product = kotak_api_wn.settings.product[product]
-                order_type = kotak_api_wn.settings.order_type[order_type]
-                place_order = self._get_api(kotak_api_wn.OrderAPI).order_placing(exchange_segment=exchange_segment,
-                                                                                     product=product, price=price,
-                                                                                     order_type=order_type, quantity=quantity,
-                                                                                     validity=validity,
-                                                                                     trading_symbol=trading_symbol,
-                                                                                     transaction_type=transaction_type, amo=amo,
-                                                                                     disclosed_quantity=disclosed_quantity,
-                                                                                     market_protection=market_protection, pf=pf,
-                                                                                     trigger_price=trigger_price, tag=tag,
-                                                                                     scrip_token=scrip_token, square_off_type=square_off_type,
-                                                                                     stop_loss_type=stop_loss_type, stop_loss_value=stop_loss_value,
-                                                                                     square_off_value=square_off_value, last_traded_price=last_traded_price,
-                                                                                     trailing_stop_loss=trailing_stop_loss, trailing_sl_value=trailing_sl_value)
+                exchange_segment = neo_api_client.settings.exchange_segment[exchange_segment]
+                product = neo_api_client.settings.product[product]
+                order_type = neo_api_client.settings.order_type[order_type]
+                place_order = neo_api_client.OrderAPI(self.api_client).order_placing(
+                    exchange_segment=exchange_segment,
+                    product=product,
+                    price=price,
+                    order_type=order_type,
+                    quantity=quantity,
+                    validity=validity,
+                    trading_symbol=trading_symbol,
+                    transaction_type=transaction_type,
+                    amo=amo,
+                    disclosed_quantity=disclosed_quantity,
+                    market_protection=market_protection,
+                    pf=pf,
+                    trigger_price=trigger_price,
+                    tag=tag,
+                    scrip_token=scrip_token,
+                    square_off_type=square_off_type,
+                    stop_loss_type=stop_loss_type,
+                    stop_loss_value=stop_loss_value,
+                    square_off_value=square_off_value,
+                    last_traded_price=last_traded_price,
+                    trailing_stop_loss=trailing_stop_loss,
+                    trailing_sl_value=trailing_sl_value,
+                )
 
                 return place_order
             except Exception as e:
@@ -311,8 +191,8 @@ class NeoAPI:
         """
         if self.configuration.edit_token and self.configuration.edit_sid:
             try:
-                kotak_api_wn.req_data_validation.cancel_order_validation(order_id)
-                cancel_order = self._get_api(kotak_api_wn.OrderAPI).order_cancelling(order_id=order_id,
+                neo_api_client.req_data_validation.cancel_order_validation(order_id)
+                cancel_order = neo_api_client.OrderAPI(self.api_client).order_cancelling(order_id=order_id,
                                                                                          isVerify=isVerify, amo=amo)
                 return cancel_order
             except Exception as e:
@@ -322,159 +202,61 @@ class NeoAPI:
 
     def cancel_cover_order(self, order_id, amo="NO", isVerify=False):
         """
-        Cancels a cover order.
+            Cancels a cover order with the given `order_id` using the NEO API.
 
-        Parameters:
-        order_id (str): Order ID
-        amo (str): AMO flag
-        isVerify (bool): Whether to verify before canceling
+            Args: order_id (str): The ID of the order to cancel.
+            amo (str, optional): Default is "NO" for no amount specified.
+            isVerify (bool, optional): Whether to verify the cancellation. Default is False.
+            "If isVerify is True, we will first check the status of the given order. If the order status is not
+             'rejected', 'cancelled', 'traded', or 'completed', we will proceed to cancel the order using the
+             cancel_order function. Otherwise, we will display the order status to the user instead."
 
-        Returns:
-        dict: Cancel response
+            Raises:
+                ValueError: If the `order_id` is not a valid input.
+                Exception: If there was an error cancelling the order.
+
+            Returns:
+                The Status of given order id.
         """
         if self.configuration.edit_token and self.configuration.edit_sid:
             try:
-                kotak_api_wn.req_data_validation.cancel_order_validation(order_id)
-                cancel_order = self._get_api(kotak_api_wn.OrderAPI).cover_order_cancelling(order_id=order_id,
-                                                                                           isVerify=isVerify, amo=amo)
+                neo_api_client.req_data_validation.cancel_order_validation(order_id)
+                cancel_order = neo_api_client.OrderAPI(self.api_client).cover_order_cancelling(order_id=order_id,
+                                                                                         isVerify=isVerify, amo=amo)
                 return cancel_order
             except Exception as e:
                 return {'Error': e}
         else:
-            return {"Error Message": "Complete the login process before accessing this application"}
+            return {"Error Message": "Complete the 2fa process before accessing this application"}
 
     def cancel_bracket_order(self, order_id, amo="NO", isVerify=False):
         """
-        Cancels a bracket order.
+            Cancels a bracket order with the given `order_id` using the NEO API.
 
-        Parameters:
-        order_id (str): Order ID
-        amo (str): AMO flag
-        isVerify (bool): Whether to verify before canceling
+            Args: order_id (str): The ID of the order to cancel.
+            amo (str, optional): Default is "NO" for no amount specified.
+            isVerify (bool, optional): Whether to verify the cancellation. Default is False.
+            "If isVerify is True, we will first check the status of the given order. If the order status is not
+             'rejected', 'cancelled', 'traded', or 'completed', we will proceed to cancel the order using the
+             cancel_order function. Otherwise, we will display the order status to the user instead."
 
-        Returns:
-        dict: Cancel response
+            Raises:
+                ValueError: If the `order_id` is not a valid input.
+                Exception: If there was an error cancelling the order.
+
+            Returns:
+                The Status of given order id.
         """
         if self.configuration.edit_token and self.configuration.edit_sid:
             try:
-                kotak_api_wn.req_data_validation.cancel_order_validation(order_id)
-                cancel_order = self._get_api(kotak_api_wn.OrderAPI).bracket_order_cancelling(order_id=order_id,
-                                                                                             isVerify=isVerify, amo=amo)
+                neo_api_client.req_data_validation.cancel_order_validation(order_id)
+                cancel_order = neo_api_client.OrderAPI(self.api_client).bracket_order_cancelling(order_id=order_id,
+                                                                                         isVerify=isVerify, amo=amo)
                 return cancel_order
             except Exception as e:
                 return {'Error': e}
         else:
-            return {"Error Message": "Complete the login process before accessing this application"}
-
-    def margin_required(self, exchange_segment, price, order_type, product, quantity, instrument_token,
-                        transaction_type, trigger_price=None, broker_name="KOTAK", branch_id="ONLINE",
-                        stop_loss_type=None, stop_loss_value=None, square_off_type=None, square_off_value=None,
-                        trailing_stop_loss=None, trailing_sl_value=None):
-        """
-        Calculates the margin required for a given trade.
-
-        Parameters:
-        exchange_segment (str): Exchange segment
-        price (float): Price
-        order_type (str): Order type
-        product (str): Product
-        quantity (int): Quantity
-        instrument_token (str): Instrument token
-        transaction_type (str): Transaction type
-        trigger_price (float, optional): Trigger price
-        broker_name (str, optional): Broker name. Defaults to "KOTAK".
-        branch_id (str, optional): Branch ID. Defaults to "ONLINE".
-        stop_loss_type (str, optional): Stop loss type
-        stop_loss_value (float, optional): Stop loss value
-        square_off_type (str, optional): Square off type
-        square_off_value (float, optional): Square off value
-        trailing_stop_loss (str, optional): Trailing stop loss
-        trailing_sl_value (float, optional): Trailing SL value
-
-        Returns:
-        dict: Margin calculation response
-        """
-        if self.configuration.edit_token and self.configuration.edit_sid:
-            try:
-                kotak_api_wn.req_data_validation.margin_validation(exchange_segment, price, order_type, product, quantity,
-                                                                   instrument_token, transaction_type)
-
-                exchange_segment = kotak_api_wn.settings.exchange_segment[exchange_segment]
-                product = kotak_api_wn.settings.product[product]
-                order_type = kotak_api_wn.settings.order_type[order_type]
-                margin_required = self._get_api(kotak_api_wn.MarginAPI).margin_init(exchange_segment=exchange_segment,
-                                                                                   price=price, order_type=order_type,
-                                                                                   product=product, quantity=quantity,
-                                                                                   instrument_token=instrument_token,
-                                                                                   transaction_type=transaction_type,
-                                                                                   trigger_price=trigger_price,
-                                                                                   broker_name=broker_name,
-                                                                                   branch_id=branch_id,
-                                                                                   stop_loss_type=stop_loss_type,
-                                                                                   stop_loss_value=stop_loss_value,
-                                                                                   square_off_type=square_off_type,
-                                                                                   square_off_value=square_off_value,
-                                                                                   trailing_stop_loss=trailing_stop_loss,
-                                                                                   trailing_sl_value=trailing_sl_value)
-                return margin_required
-            except Exception as e:
-                return {'Error': e}
-        else:
-            return {"Error Message": "Complete the login process before accessing this application"}
-
-    def search_scrip(self, exchange_segment, symbol="", expiry=None, option_type=None, strike_price=None,
-                     ignore_50multiple=True):
-        """
-        Search for a scrip based on the given parameters.
-
-        Parameters:
-        exchange_segment (str): The exchange segment to search in. Mandatory.
-        symbol (str): The symbol to search for. Optional.
-        expiry (str): The expiry date in YYYYMM format. Optional.
-        option_type (str): The option type ("CE" or "PE"). Optional.
-        strike_price (str): The strike price. Optional.
-        ignore_50multiple (bool): Whether to ignore non-50 multiples. Optional.
-
-        Returns:
-        dict: Scrip search results
-        """
-        if self.configuration.edit_token and self.configuration.edit_sid:
-            if not exchange_segment:
-                error = {
-                    'error': [{'code': '10300', 'message': 'Validation Errors! Exchange Segment is Mandate to proceed '
-                                                           'further'}]}
-                return error
-            try:
-                exchange_segment = kotak_api_wn.settings.exchange_segment[exchange_segment]
-                symbol = str(symbol).lower()
-                scrip_list = self._get_api(kotak_api_wn.ScripSearch).scrip_search(exchange_segment=exchange_segment,
-                                                                                  symbol=symbol, expiry=expiry,
-                                                                                  option_type=option_type,
-                                                                                  strike_price=strike_price,
-                                                                                  ignore_50multiple=ignore_50multiple)
-                return scrip_list
-            except Exception as e:
-                return {"Error": e, "message": 'Exchange Segment is not available'}
-        else:
-            return {"Error Message": "Complete the login process before accessing this application"}
-
-    def quotes(self, instrument_tokens=None, quote_type=None):
-        """
-        Retrieves quotes for the given instrument tokens.
-
-        Parameters:
-        instrument_tokens (list): List of instrument tokens
-        quote_type (str): Type of quote (e.g., 'all', 'ltp', 'depth')
-
-        Returns:
-        dict: Quotes response
-        """
-        if not instrument_tokens:
-            error = {
-                'error': [{'message': 'Validation Errors! instrument_tokens are missing'}]}
-            return error
-        quotes_response = self._get_api(kotak_api_wn.QuotesAPI).get_quotes(instrument_tokens=instrument_tokens, quote_type=quote_type)
-        return quotes_response
+            return {"Error Message": "Complete the 2fa process before accessing this application"}
 
     def order_report(self):
         """
@@ -488,7 +270,7 @@ class NeoAPI:
         """
         if self.configuration.edit_token and self.configuration.edit_sid:
             try:
-                order_list = self._get_api(kotak_api_wn.OrderReportAPI).ordered_books()
+                order_list = neo_api_client.OrderReportAPI(self.api_client).ordered_books()
                 return order_list
             except Exception as e:
                 return {'Error': e}
@@ -510,8 +292,8 @@ class NeoAPI:
         """
         if self.configuration.edit_token and self.configuration.edit_sid:
             try:
-                kotak_api_wn.req_data_validation.order_history_validation(order_id)
-                history_list = self._get_api(kotak_api_wn.OrderHistoryAPI).ordered_history(order_id=order_id)
+                neo_api_client.req_data_validation.order_history_validation(order_id)
+                history_list = neo_api_client.OrderHistoryAPI(self.api_client).ordered_history(order_id=order_id)
                 return history_list
             except Exception as e:
                 return {'Error': e}
@@ -534,7 +316,7 @@ class NeoAPI:
         """
         if self.configuration.edit_token and self.configuration.edit_sid:
             try:
-                filtered_trades = self._get_api(kotak_api_wn.TradeReportAPI).trading_report(order_id=order_id)
+                filtered_trades = neo_api_client.TradeReportAPI(self.api_client).trading_report(order_id=order_id)
                 return filtered_trades
             except Exception as e:
                 return {'Error': e}
@@ -577,11 +359,11 @@ class NeoAPI:
         """
         if self.configuration.edit_token and self.configuration.edit_sid:
             if order_id and instrument_token and exchange_segment and product and trading_symbol:
-                exchange_segment = kotak_api_wn.settings.exchange_segment[exchange_segment]
-                product = kotak_api_wn.settings.product[product]
-                order_type = kotak_api_wn.settings.order_type[order_type]
+                exchange_segment = neo_api_client.settings.exchange_segment[exchange_segment]
+                product = neo_api_client.settings.product[product]
+                order_type = neo_api_client.settings.order_type[order_type]
                 try:
-                    quick_modify = self._get_api(kotak_api_wn.ModifyOrder). \
+                    quick_modify = neo_api_client.ModifyOrder(self.api_client). \
                         quick_modification(order_id=order_id, price=price, order_type=order_type, quantity=quantity,
                                            validity=validity, instrument_token=instrument_token, product=product,
                                            exchange_segment=exchange_segment, trading_symbol=trading_symbol,
@@ -594,7 +376,7 @@ class NeoAPI:
                     return {'Error': "Exception has been occurred while connecting to API"}
             elif order_id and not instrument_token and not exchange_segment and not trading_symbol:
                 try:
-                    modify_order = self._get_api(kotak_api_wn.ModifyOrder).modification_with_orderid(
+                    modify_order = neo_api_client.ModifyOrder(self.api_client).modification_with_orderid(
                         order_id=order_id, price=price, order_type=order_type, quantity=quantity,
                         validity=validity, instrument_token=instrument_token, product=product,
                         exchange_segment=exchange_segment, trading_symbol=trading_symbol,
@@ -623,7 +405,7 @@ class NeoAPI:
         """
         if self.configuration.edit_token and self.configuration.edit_sid:
             try:
-                position_list = self._get_api(kotak_api_wn.PositionsAPI).position_init()
+                position_list = neo_api_client.PositionsAPI(self.api_client).position_init()
                 return position_list
             except Exception as e:
                 return {"Error": e}
@@ -642,7 +424,7 @@ class NeoAPI:
         """
         if self.configuration.edit_token and self.configuration.edit_sid:
             try:
-                portfolio_list = self._get_api(kotak_api_wn.PortfolioAPI).portfolio_holdings()
+                portfolio_list = neo_api_client.PortfolioAPI(self.api_client).portfolio_holdings()
                 return portfolio_list
             except Exception as e:
                 return {"Error": e}
@@ -684,14 +466,14 @@ class NeoAPI:
         """
         if self.configuration.edit_token and self.configuration.edit_sid:
             try:
-                kotak_api_wn.req_data_validation.margin_validation(exchange_segment, price, order_type, product, quantity,
+                neo_api_client.req_data_validation.margin_validation(exchange_segment, price, order_type, product, quantity,
                                                                      instrument_token,
                                                                      transaction_type)
 
-                exchange_segment = kotak_api_wn.settings.exchange_segment[exchange_segment]
-                product = kotak_api_wn.settings.product[product]
-                order_type = kotak_api_wn.settings.order_type[order_type]
-                margin_required = self._get_api(kotak_api_wn.MarginAPI).margin_init(exchange_segment=exchange_segment,
+                exchange_segment = neo_api_client.settings.exchange_segment[exchange_segment]
+                product = neo_api_client.settings.product[product]
+                order_type = neo_api_client.settings.order_type[order_type]
+                margin_required = neo_api_client.MarginAPI(self.api_client).margin_init(exchange_segment=exchange_segment,
                                                                                         price=price, order_type=order_type,
                                                                                         product=product, quantity=quantity,
                                                                                         instrument_token=instrument_token,
@@ -718,6 +500,7 @@ class NeoAPI:
         Args:
             exchange_segment (str): A string representing the exchange segment to retrieve the list of scrips from.
 
+
         Raises:
             Exception: If there was an error retrieving the list of scrips.
 
@@ -726,7 +509,7 @@ class NeoAPI:
         """
         if self.configuration.edit_token and self.configuration.edit_sid:
             try:
-                scrip_list = self._get_api(kotak_api_wn.ScripMasterAPI).scrip_master_init(
+                scrip_list = neo_api_client.ScripMasterAPI(self.api_client).scrip_master_init(
                     exchange_segment=exchange_segment)
                 return scrip_list
             except Exception as e:
@@ -751,9 +534,9 @@ class NeoAPI:
         """
         if self.configuration.edit_token and self.configuration.edit_sid:
             try:
-                kotak_api_wn.req_data_validation.limits_validation(segment, exchange, product)
+                neo_api_client.req_data_validation.limits_validation(segment, exchange, product)
 
-                limits_list = self._get_api(kotak_api_wn.LimitsAPI).limit_init(segment=segment, exchange=exchange,
+                limits_list = neo_api_client.LimitsAPI(self.api_client).limit_init(segment=segment, exchange=exchange,
                                                                                    product=product)
                 return limits_list
             except Exception as e:
@@ -786,9 +569,9 @@ class NeoAPI:
                                                            'further'}]}
                 return error
             try:
-                exchange_segment = kotak_api_wn.settings.exchange_segment[exchange_segment]
+                exchange_segment = neo_api_client.settings.exchange_segment[exchange_segment]
                 symbol = str(symbol).lower()
-                scrip_list = self._get_api(kotak_api_wn.ScripSearch).scrip_search(exchange_segment=exchange_segment,
+                scrip_list = neo_api_client.ScripSearch(self.api_client).scrip_search(exchange_segment=exchange_segment,
                                                                                       symbol=symbol, expiry=expiry,
                                                                                       option_type=option_type,
                                                                                       strike_price=strike_price,
@@ -799,75 +582,14 @@ class NeoAPI:
         else:
             return {"Error Message": "Complete the 2fa process before accessing this application"}
 
-    def quotes(self, instrument_tokens, quote_type=None, isIndex=False, session_token=None, sid=None,
-               server_id=None):
-        """
-            Subscribe to real-time quotes for the given instrument tokens.
-
-            Args:
-                instrument_tokens (List): A JSON-encoded list of instrument tokens to subscribe to.
-                quote_type (str): The type of quote to subscribe to.
-                isIndex (bool): Whether the instrument is an index.
-                session_token (str): The session token to use for authentication. This argument is optional if the login has been completed.
-                sid (str): The session ID to use for authentication. This argument is mandatory if the session token is passed as input.
-                server_id (str): The server ID to use for authentication. This argument is mandatory if the session token is passed as input.
-                on_error (callable): A callback function to be called whenever an error occurs.
-
-            Returns:
-                JSON-encoded list of Quotes information
-
-            Raises:
-                ValueError: If the instrument tokens are not provided, or if the session token and SID are not provided when there is no Login.
-        """
-        if not instrument_tokens:
-            raise ValueError("Without instrument_tokens it's hard to subscribe with None values")
-
-        if len(instrument_tokens) > 100:
-            # print({'Error': "Error", 'message': "Tokens must be less than 100"})
-            return {'Error': "Error", 'message': "Tokens must be less than 100"}
-
-        if not session_token and not self.configuration.edit_token:
-            raise ValueError("Error! Login or pass the Session Token and SID")
-
-        if not sid and not self.configuration.edit_sid:
-            raise ValueError("Error! Login or Kindly pass the SID token to proceed further")
-        
-        if not server_id and not self.configuration.serverId:
-            raise ValueError("Error! Login or Kindly pass the server ID token to proceed further")
-        
-        if(not session_token and self.configuration.edit_token):
-            session_token = self.configuration.edit_token
-
-        if(not sid and self.configuration.edit_sid):
-            sid = self.configuration.edit_sid
-        
-        if(not server_id and self.configuration.serverId):
-            server_id = self.configuration.serverId
-
-        if not self.NeoWebSocket:
-            self.check_callbacks()
-            self.NeoWebSocket = kotak_api_wn.NeoWebSocket(sid, session_token, server_id)
-            self.set_neowebsocket_callbacks()
-        
-        response = {}
-        def callback(message):
-            nonlocal response
-            response = {'message' : message}
-            
-        self.NeoWebSocket.get_quotes(instrument_tokens=instrument_tokens, quote_type=quote_type, isIndex=isIndex)
-        
-        if response:
-            return response
-        
     def __on_open(self):
         if self.on_open:
-            pass
-            # self.on_open("The Session has been Opened!")
+            self.on_open("The Session has been Opened!")
 
     def __on_close(self):
+        # print("[Socket]: Disconnected Demo Func !")
         if self.on_close:
-            # self.on_close("The Session has been Closed!")
-            pass
+            self.on_close("The Session has been Closed!")
 
     def __on_error(self, error):
         # print("[Socket]: Error !")
@@ -924,21 +646,37 @@ class NeoAPI:
         
         if self.configuration.edit_token and self.configuration.edit_sid:
             if not self.NeoWebSocket:
-                # self.check_callbacks()
-                self.NeoWebSocket = kotak_api_wn.NeoWebSocket(self.configuration.edit_sid,
+                self.check_callbacks()
+                self.NeoWebSocket = neo_api_client.NeoWebSocket(self.configuration.edit_sid,
                                                                 self.configuration.edit_token,
-                                                                self.configuration.serverId)
+                                                                self.configuration.serverId,
+                                                                data_center=None)
                 self.set_neowebsocket_callbacks()
             self.NeoWebSocket.get_live_feed(instrument_tokens=instrument_tokens, isIndex=isIndex, isDepth=isDepth)
         else:
             print("Please complete the Login Flow to Subscribe the Scrips")
 
     def un_subscribe(self, instrument_tokens, isIndex=False, isDepth=False):
+        """
+            Unsubscribe the live feeds for the subscribed instrument tokens.
+
+            Args:
+                instrument_tokens (List): A JSON-encoded list of instrument tokens.
+                isIndex (bool): Whether the instrument is an index. Default is False.
+                isDepth (bool): Whether to subscribe to depth data. Default is False.
+
+            Raises:
+                ValueError: If the login flow is not completed.
+
+            Returns:
+                Message that its successfully unsubscribed
+        """
         if self.configuration.edit_token and self.configuration.edit_sid:
             if not self.NeoWebSocket:
-                self.NeoWebSocket = kotak_api_wn.NeoWebSocket(self.configuration.edit_sid,
+                self.NeoWebSocket = neo_api_client.NeoWebSocket(self.configuration.edit_sid,
                                                                 self.configuration.edit_token,
-                                                                self.configuration.serverId)
+                                                                self.configuration.serverId,
+                                                                data_center=None)
 
             self.set_neowebsocket_callbacks()
             self.NeoWebSocket.un_subscribe_list(instrument_tokens=instrument_tokens,
@@ -951,7 +689,7 @@ class NeoAPI:
         class_name = NeoAPI.__name__
         try:
             if function_name is None:
-                print(kotak_api_wn.settings.help_functions)
+                print(neo_api_client.settings.help_functions)
             else:
                 function_name = str(function_name).strip()
                 if function_name == "socket":
@@ -978,7 +716,7 @@ class NeoAPI:
         """
         if self.configuration.edit_token and self.configuration.edit_sid:
             try:
-                log_off = self._get_api(kotak_api_wn.LogoutAPI).logging_out()
+                # log_off = neo_api_client.LogoutAPI(self.api_client).logging_out()
                 self.configuration.bearer_token = None
                 self.configuration.edit_sid = None
                 self.configuration.edit_token = None
@@ -1002,11 +740,85 @@ class NeoAPI:
         if self.configuration.edit_token and self.configuration.edit_sid:
             self.check_callbacks()
             if not self.NeoWebSocket:
-                self.NeoWebSocket = kotak_api_wn.NeoWebSocket(self.configuration.edit_sid,
+                self.NeoWebSocket = neo_api_client.NeoWebSocket(self.configuration.edit_sid,
                                                                 self.configuration.edit_token,
-                                                                self.configuration.serverId)
+                                                                self.configuration.serverId,
+                                                                self.configuration.data_center)
             self.set_neowebsocket_callbacks()
             self.NeoWebSocket.get_order_feed()
                                             
         else:
             return {"Error Message": "Complete the 2fa process before accessing this application"}
+
+    def totp_login(self, mobile_number=None, ucc=None, totp=None):
+        """
+            Logs in to the system by generating a view token using mobile_number, totp and ucc
+
+            Args:
+                mobile_number (str): Registered mobile number
+                ucc (str): Unique Client Code which you will find in mobile application/website under profile section
+                totp (str): The 6 digit code generated on the authenticator app
+
+            Returns:
+                {
+                    "data": {"token": "", "sid": "", "rid": "", "hsServerId": "", "isUserPwdExpired": , "ucc": "",
+                        "greetingName": "", "isTrialAccount": , "dataCenter": "", "searchAPIKey": "",
+                        "derivativesRiskDisclosure": "", "mfAccess": 1, "dataCenterMap": null, "dormancyStatus": "",
+                        "asbaStatus": "", "clientType": "", "isNRI": false, "kId": "", "kType": "", "status": "",
+                        "incRange": 0, "incUpdFlag": "", "clientGroup": ""}
+                }
+
+        """
+        if not mobile_number or not ucc or not totp:
+            error = {
+                'error': [{'message': 'Any of Mobile Number, UCC or totp is missing'}]}
+            return error
+        totp_login = neo_api_client.TotpAPI(self.api_client).totp_login(mobile_number=mobile_number, ucc=ucc, totp=totp)
+        return totp_login
+
+    def totp_validate(self, mpin=None):
+        """
+            Establishes a session with the API using the generated view token and mpin.
+
+            Parameters:
+            mpin (str): The 6 digit pin
+
+            Returns: {
+                "data": {"token": "", "sid": "", "rid": "", "hsServerId": "", "isUserPwdExpired": false, "ucc": "",
+                    "greetingName": "", "isTrialAccount": false, "dataCenter": "gdc", "searchAPIKey": "",
+                    "derivativesRiskDisclosure": "", "mfAccess": 1, "dataCenterMap": null, "dormancyStatus": "",
+                    "asbaStatus": "", "clientType": "", "isNRI": false, "kId": "", "kType": "", "status": "",
+                    "incRange": 0, "incUpdFlag": "", "clientGroup": ""}
+            }
+
+            Updates:
+            edit_token: sets the edit token obtained from the API response.
+        """
+        if not mpin:
+            error = {
+                'error': [{'message': 'Mpin is missing'}]}
+            return error
+
+        totp_validate = neo_api_client.TotpAPI(self.api_client).totp_validate(mpin=mpin)
+        return totp_validate
+
+    def quotes(self, instrument_tokens=None, quote_type=None):
+        """
+            Retrieves quotes for the given instrument tokens.
+
+            Args:
+                instrument_tokens (List): A JSON-encoded list of instrument tokens to subscribe to.
+                quote_type (str): The type of quote to subscribe to.
+
+            Returns:
+                JSON-encoded list of Quotes information
+
+            Raises:
+                ValueError: If the instrument tokens are not provided.
+        """
+        if not instrument_tokens:
+            error = {
+                'error': [{'message': 'Validation Errors! instrument_tokens are missing'}]}
+            return error
+        quotes_response = neo_api_client.QuotesAPI(self.api_client).get_quotes(instrument_tokens=instrument_tokens, quote_type=quote_type)
+        return quotes_response

@@ -76,26 +76,14 @@ PROD_URL = {
     "qr_code_generate_session_napi": "login/1.0/algo-user/v5/login/generate-session-token"
 }
 
-# Frozensets for O(1) membership testing (faster than lists)
-exchange_segment_allowed_values = frozenset([
-    "NSE", "nse", "BSE", "bse", "NFO", "nfo", "BFO", "bfo", "CDS", "cds", "BCD", "bcd",
-    "nse_cm", "bse_cm", "nse_fo", "bse_fo", "cde_fo", "bcs-fo", "mcx_fo"
-])
+exchange_segment_allowed_values = ["NSE", "nse", "BSE", "bse", "NFO", "nfo", "BFO", "bfo", "CDS", "cds", "BCD", "bcd",
+                                   "nse_cm", "bse_cm", "nse_fo", "bse_fo", "cde_fo", "bcs-fo", "mcx_fo"]
 
-product_allowed_values = frozenset([
-    "NRML", "CNC", "MIS", "INTRADAY", "CO", "BO", "Normal", "Cash and Carry", "Cover Order",
-    "Bracket Order", "MTF"
-])
+product_allowed_values = ["NRML", "CNC", "MIS", "INTRADAY", "CO", "BO", "Normal", "Cash and Carry", "Cover Order",
+                          "Bracket Order", "MTF"]
 
-order_type_allowed_values = frozenset([
-    "Limit", "Market", "Stop loss limit", "Stop loss market", "Spread", "Two Leg", "Three leg",
-    "L", "MKT", "SL", "SL-M", "SP", "2L", "3L"
-])
-
-order_type_allowed_values = frozenset([
-    "Limit", "Market", "Stop loss limit", "Stop loss market", "Spread", "Two Leg", "Three leg",
-    "L", "MKT", "SL", "SL-M", "SP", "2L", "3L"
-])
+order_type_allowed_values = ["Limit", "Market", "Stop loss limit", "Stop loss market", "Spread", "Two Leg", "Three leg",
+                             "L", "MKT", "SL", "SL-M", "SP", "2L", "3L"]
 
 exchange_segment = {"nse_cm": "nse_cm", "NSE": "nse_cm", "nse": "nse_cm", "BSE": "bse_cm", "bse": "bse_cm",
                     "bse_cm": "bse_cm", "NFO": "nse_fo", "nse_fo": "nse_fo", "nfo": "nse_fo", "BFO": "bse_fo",
@@ -112,10 +100,9 @@ order_type = {"Limit": "L", "L": "L", "l": "L", "MKT": "MKT", "mkt": "MKT", "Mar
               "SP": "SP", "sp": "SP", "2L": "2L", "2l": "2L", "Two Leg": "2L", "3L": "3L", "3l": "3L",
               "Three leg": "3L"}
 
-# Frozensets for faster membership testing
-segment_limits = frozenset(["CASH", "CUR", "FO", "ALL"])
-exchange_limits = frozenset(["NSE", "BSE", "ALL"])
-product_limits = frozenset(["CNC", "MIS", "NRML", "ALL"])
+segment_limits = ["CASH", "CUR", "FO", "ALL"]
+exchange_limits = ["NSE", "BSE", "ALL"]
+product_limits = ["CNC", "MIS", "NRML", "ALL"]
 
 stock_key_mapping = {
     'ltt': "last_traded_time",
@@ -220,3 +207,5 @@ help_functions = {
     15: 'help("subscribe_to_orderfeed")',
     16: 'help()'
 }
+
+ORDER_SOURCE = 'NEOTRADEAPI'
