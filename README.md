@@ -3,7 +3,7 @@
 [![Python Version](https://img.shields.io/badge/python-3.8%2B-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-A high-performance, optimized Python client for the Kotak Neo Trading API. This library is designed for low-latency trading applications with significant performance improvements over the standard client.
+A high-performance, optimized Python client for the Kotak Neo Trading API v2. This library is designed for low-latency trading applications with significant performance improvements over the standard client.
 
 ## ✨ Features
 
@@ -13,6 +13,9 @@ A high-performance, optimized Python client for the Kotak Neo Trading API. This 
 - **Optimized Data Structures** - Frozensets for O(1) membership testing
 - **WebSocket Support** - Real-time market data and order feeds
 - **Full API Coverage** - Orders, positions, holdings, margins, and more
+- **TOTP Authentication** - Secure time-based one-time password support
+- **Bracket Orders** - Advanced order types with stop loss and target
+- **API v2 Support** - Latest Kotak Neo API endpoints and features
 
 ## 🚀 Quick Start
 
@@ -22,15 +25,18 @@ from kotak_api_wn import NeoAPI
 # Initialize the client
 client = NeoAPI(
     consumer_key="your_consumer_key",
-    consumer_secret="your_consumer_secret",
     environment="prod"  # or "uat" for testing
 )
 
-# Login
-client.login(mobilenumber="9876543210", password="your_password")
+# Login with TOTP (recommended)
+client.totp_login(
+    mobile_number="9876543210",
+    ucc="your_ucc",
+    totp="123456"  # From authenticator app
+)
 
-# Complete 2FA
-client.session_2fa(OTP="123456")
+# Validate with MPIN
+client.totp_validate(mpin="123456")
 
 # Place an order
 response = client.place_order(

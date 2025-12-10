@@ -10,35 +10,18 @@ from kotak_api_wn import NeoAPI
 # Create client with credentials
 client = NeoAPI(
     consumer_key="your_consumer_key",
-    consumer_secret="your_consumer_secret",
     environment="prod"  # "prod" for live, "uat" for testing
 )
 ```
 
-### 2. Authentication Flow
+### 2. Authentication (TOTP)
 
 ```python
-# Step 1: Login with credentials (sends OTP)
-login_response = client.login(
-    mobilenumber="9876543210",
-    password="your_password"
-)
-print(login_response)
-
-# Step 2: Complete 2FA with OTP
-otp = input("Enter OTP: ")
-session_response = client.session_2fa(OTP=otp)
-print(session_response)
-```
-
-### 3. Alternative: TOTP Login
-
-```python
-# Login with TOTP (if enabled)
+# Login with TOTP
 totp_response = client.totp_login(
     mobile_number="9876543210",
     ucc="your_ucc",
-    totp="123456"  # From authenticator app
+    totp="123456"  # 6-digit code from authenticator app
 )
 
 # Validate with MPIN
@@ -87,6 +70,33 @@ sl_order = client.place_order(
     transaction_type="S",
     trigger_price="2455.00"
 )
+
+# Bracket Order (BO)
+bracket_order = client.place_order(
+    exchange_segment="NSE",
+    product="BO",
+    price="2500.00",
+    order_type="L",
+    quantity="10",
+    validity="DAY",
+    trading_symbol="RELIANCE-EQ",
+    transaction_type="B",
+    scrip_token="11536",  # Instrument token
+    sot="2480.00",        # Stop loss trigger price
+    slt="2475.00"         # Stop loss limit price
+)
+
+# Cover Order (CO)
+cover_order = client.place_order(
+    exchange_segment="NSE",
+    product="CO",
+    price="2500.00",
+    order_type="L",
+    quantity="10",
+    validity="DAY",
+    trading_symbol="RELIANCE-EQ",
+    transaction_type="B"
+)
 ```
 
 ### Modify Order
@@ -119,12 +129,18 @@ modified = client.modify_order(
 ### Cancel Order
 
 ```python
-# Cancel order
+# Cancel regular order
 cancel_response = client.cancel_order(
     order_id="221206000012345",
     isVerify=True  # Verify status before cancelling
 )
 print(cancel_response)
+
+# Cancel cover order
+cover_cancel = client.cancel_cover_order(order_id="221206000012346")
+
+# Cancel bracket order
+bracket_cancel = client.cancel_bracket_order(order_id="221206000012347")
 ```
 
 ## Portfolio & Positions
@@ -285,20 +301,77 @@ client.un_subscribe(
 
 ## Session Management
 
-### Reuse Session
+### Reusing Existing Sessions
+
+For better performance and to avoid repeated authentication, you can save and reuse session tokens. After successful authentication, save the following tokens for future use:
+
+#### What to Save After Login
+
+After successful TOTP login and validation, save these authentication tokens:
 
 ```python
-# After successful login, save session
-session_data = client.reuse_session
-# Store session_data securely
-
-# Later, reuse the session
-client = NeoAPI(
-    environment="prod",
-    reuse_session=session_data
-)
-# No need to login again!
+# After successful totp_login() and totp_validate()
+session_data = {
+    "view_token": client.configuration.view_token,    # For read operations
+    "edit_token": client.configuration.edit_token,    # For trading operations
+    "edit_sid": client.configuration.edit_sid,        # Session ID for trading
+    "edit_rid": client.configuration.edit_rid,        # Request ID for trading
+    "sid": client.configuration.sid,                  # Base session ID
+    "serverId": client.configuration.serverId         # Server identifier (optional)
+}
 ```
+
+#### Reusing Saved Session
+
+To reuse a saved session without re-authentication:
+
+```python
+from kotak_api_wn import NeoAPI
+
+# Create client with consumer_key (required for proper API authentication)
+client = NeoAPI(
+    consumer_key="your_consumer_key",
+    environment="prod"
+)
+
+# Restore saved tokens
+client.configuration.view_token = saved_session["view_token"]
+client.configuration.edit_token = saved_session["edit_token"]
+client.configuration.edit_sid = saved_session["edit_sid"]
+client.configuration.edit_rid = saved_session["edit_rid"]
+client.configuration.sid = saved_session["sid"]
+
+# Optional: restore server ID if saved
+if "serverId" in saved_session:
+    client.configuration.serverId = saved_session["serverId"]
+
+# Validate session (recommended for trading operations)
+try:
+    validation = client.totp_validate(mpin="your_mpin")
+    if validation.get("status") == "success":
+        print("Session validated - ready for trading")
+    else:
+        print("Session validation failed - re-authentication required")
+except Exception as e:
+    print(f"Session validation error: {e}")
+    # Fall back to fresh TOTP login
+```
+
+#### Session Persistence Strategy
+
+1. **Save After Fresh Login**: Store tokens after successful TOTP authentication
+2. **Validate on Reuse**: Always validate with MPIN before trading operations
+3. **Handle Expiration**: Sessions may expire, so implement fallback to fresh login
+4. **Security**: Store tokens securely (encrypted) and refresh periodically
+
+#### Token Types and Usage
+
+- **view_token**: Used for read-only operations (quotes, holdings, positions)
+- **edit_token**: Required for trading operations (place, modify, cancel orders)
+- **sid/edit_sid**: Session identifiers for API requests
+- **edit_rid**: Request identifier for trading operations
+
+**Note**: The `edit_token` provides trading permissions and may have shorter validity than `view_token`. Always validate sessions before critical operations.
 
 ### Logout
 

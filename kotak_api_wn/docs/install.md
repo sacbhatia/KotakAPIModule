@@ -65,6 +65,12 @@ websocket-client>=1.4.0 # WebSocket support
 six>=1.16.0            # Python 2/3 compatibility
 urllib3>=1.26.0        # URL handling
 PyJWT>=2.6.0           # JWT token handling
+bidict>=0.22.1         # Bidirectional mapping
+numpy>=2.1.0           # Numerical computing
+pyjsparser>=2.7.1      # JavaScript parsing
+python-dotenv>=1.0.0   # Environment variables
+websockets>=8.1        # WebSocket protocol
+pandas>=2.2.3          # Data manipulation
 ```
 
 ### Optional Dependencies (Recommended)
@@ -93,7 +99,6 @@ except ImportError:
 # Verify client can be created
 client = NeoAPI(
     consumer_key="test_key",
-    consumer_secret="test_secret",
     environment="uat"
 )
 print("✓ NeoAPI client created successfully")

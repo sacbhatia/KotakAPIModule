@@ -10,66 +10,20 @@ The main client class for interacting with Kotak Neo Trading API.
 NeoAPI(
     environment: str = "uat",
     access_token: str = None,
-    consumer_key: str = None,
-    consumer_secret: str = None,
     neo_fin_key: str = None,
-    reuse_session: dict = None
+    consumer_key: str = None
 )
 ```
 
 **Parameters:**
 - `environment` - `"prod"` for live trading, `"uat"` for testing
 - `access_token` - Pre-existing access token (optional)
-- `consumer_key` - Your API consumer key
-- `consumer_secret` - Your API consumer secret
 - `neo_fin_key` - Financial key for tracking (optional)
-- `reuse_session` - Session data to reuse authentication
+- `consumer_key` - Your API consumer key (from Neo app)
 
 ---
 
 ## Authentication Methods
-
-### login()
-
-```python
-login(
-    password: str = None,
-    mobilenumber: str = None,
-    userid: str = None,
-    pan: str = None,
-    mpin: str = None
-) -> dict
-```
-
-Initiates login and sends OTP to registered mobile.
-
-**Parameters (one required):**
-- `mobilenumber` - 10-digit mobile number
-- `userid` - User ID
-- `pan` - PAN number
-
-**Plus:**
-- `password` - Account password
-- `mpin` - MPIN (6 digits)
-
-**Returns:** `dict` with view token and session info
-
----
-
-### session_2fa()
-
-```python
-session_2fa(OTP: str) -> dict
-```
-
-Completes 2FA authentication with OTP.
-
-**Parameters:**
-- `OTP` - One-time password received via SMS
-
-**Returns:** `dict` with edit token and session details
-
----
 
 ### totp_login()
 
@@ -81,12 +35,14 @@ totp_login(
 ) -> dict
 ```
 
-Login using TOTP (Time-based One-Time Password).
+**Primary authentication method.** Login using TOTP (Time-based One-Time Password) from authenticator app.
 
 **Parameters:**
 - `mobile_number` - Registered mobile number
 - `ucc` - Unique Client Code
 - `totp` - 6-digit TOTP from authenticator app
+
+**Returns:** `dict` with session tokens
 
 ---
 
@@ -96,7 +52,12 @@ Login using TOTP (Time-based One-Time Password).
 totp_validate(mpin: str = None) -> dict
 ```
 
-Validate TOTP session with MPIN.
+Validates TOTP session with MPIN.
+
+**Parameters:**
+- `mpin` - 6-digit MPIN
+
+**Returns:** `dict` with access token
 
 ---
 
@@ -129,11 +90,14 @@ place_order(
     market_protection: str = "0",
     pf: str = "N",
     trigger_price: str = "0",
-    tag: str = None
+    tag: str = None,
+    scrip_token: str = None,
+    sot: str = None,
+    slt: str = None
 ) -> dict
 ```
 
-Places a new order.
+Places a new order. Supports regular orders, cover orders (CO), and bracket orders (BO).
 
 **Parameters:**
 | Parameter | Values | Description |
@@ -149,6 +113,9 @@ Places a new order.
 | `amo` | YES, NO | After Market Order |
 | `trigger_price` | String | Trigger price for SL orders |
 | `tag` | String | Order tag (optional) |
+| `scrip_token` | String | Instrument token (for bracket orders) |
+| `sot` | String | Stop loss trigger price (for bracket orders) |
+| `slt` | String | Stop loss limit price (for bracket orders) |
 
 **Returns:** `dict` with order number `nOrdNo`
 
@@ -199,6 +166,32 @@ Cancels an order.
 - `order_id` - Order number to cancel
 - `amo` - "YES" for AMO orders
 - `isVerify` - If True, checks order status before cancelling
+
+---
+
+### cancel_cover_order()
+
+```python
+cancel_cover_order(order_id: str) -> dict
+```
+
+Cancels a cover order.
+
+**Parameters:**
+- `order_id` - Cover order number to cancel
+
+---
+
+### cancel_bracket_order()
+
+```python
+cancel_bracket_order(order_id: str) -> dict
+```
+
+Cancels a bracket order.
+
+**Parameters:**
+- `order_id` - Bracket order number to cancel
 
 ---
 
@@ -434,23 +427,4 @@ Displays help for a function or lists all available functions.
 ```python
 client.help()  # List all functions
 client.help("place_order")  # Help for place_order
-```
-
----
-
-## Session Reuse
-
-After login, access `client.reuse_session` to get session data:
-
-```python
-session_data = client.reuse_session
-# {
-#     "access_token": "...",
-#     "session_token": "...",
-#     "sid": "...",
-#     "serverId": "..."
-# }
-
-# Later, reuse without login:
-client = NeoAPI(environment="prod", reuse_session=session_data)
 ```

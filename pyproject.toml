@@ -4,13 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "kotak_api_wn"
-version = "1.0.0"
+version = "2.0.0"
 description = "High-performance Kotak Neo Trading API Client with optimized latency"
 readme = "README.md"
 license = {text = "MIT"}
 requires-python = ">=3.8"
 authors = [
-    {name = "Kotak Securities", email = "support@kotaksecurities.com"}
+    {name = "wavenodes"}
 ]
 keywords = ["kotak", "neo", "trading", "api", "stock", "market", "finance", "low-latency"]
 classifiers = [
@@ -34,6 +34,12 @@ dependencies = [
     "six>=1.16.0",
     "urllib3>=1.26.0",
     "PyJWT>=2.6.0",
+    "bidict>=0.22.1",
+    "numpy>=2.1.0",
+    "pyjsparser>=2.7.1",
+    "python-dotenv>=1.0.0",
+    "websockets>=8.1",
+    "pandas>=2.2.3",
 ]
 
 [project.optional-dependencies]
@@ -50,9 +56,9 @@ dev = [
 ]
 
 [project.urls]
-Documentation = "https://github.com/nicewangjie/kotak_api_wn/docs"
-Source = "https://github.com/nicewangjie/kotak_api_wn"
-"Bug Reports" = "https://github.com/nicewangjie/kotak_api_wn/issues"
+Documentation = "https://github.com/wavenodes/KotakAPIModule/tree/master/kotak_api_wn/docs"
+Source = "https://github.com/wavenodes/KotakAPIModule"
+"Bug Reports" = "https://github.com/wavenodes/KotakAPIModule/issues"
 
 [tool.setuptools.packages.find]
 exclude = ["tests*", "docs*"]

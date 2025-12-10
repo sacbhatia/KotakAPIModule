@@ -1,18 +1,17 @@
 import requests
-from kotak_api_wn import rest
 
 
 class OrderReportAPI(object):
+    __slots__ = ('api_client', 'rest_client')
+    
     def __init__(self, api_client):
         self.api_client = api_client
         self.rest_client = api_client.rest_client
 
     def ordered_books(self):
         header_params = {
-            'Authorization': "Bearer " + self.api_client.configuration.bearer_token,
             "Sid": self.api_client.configuration.edit_sid,
             "Auth": self.api_client.configuration.edit_token,
-            "neo-fin-key": self.api_client.configuration.get_neo_fin_key(),
             "accept": "application/json"
         }
         query_params = {"sId": self.api_client.configuration.serverId}

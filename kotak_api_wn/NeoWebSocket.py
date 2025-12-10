@@ -1,30 +1,29 @@
 import copy
+import json
 import threading
 import time
 
-import kotak_api_wn
-from kotak_api_wn.settings import stock_key_mapping, MarketDepthResp, QuotesChannel, \
+from .settings import stock_key_mapping, MarketDepthResp, QuotesChannel, \
     ReqTypeValues, index_key_mapping
-from kotak_api_wn.urls import ORDER_FEED_URL
-
-# Try to use orjson for faster JSON serialization
-try:
-    import orjson
-    def json_dumps(obj):
-        return orjson.dumps(obj).decode('utf-8')
-    def json_loads(s):
-        return orjson.loads(s)
-except ImportError:
-    import json
-    json_dumps = json.dumps
-    json_loads = json.loads
+from .urls import ORDER_FEED_URL, ORDER_FEED_URL_ADC, \
+    ORDER_FEED_URL_E21, ORDER_FEED_URL_E22, ORDER_FEED_URL_E41, ORDER_FEED_URL_E43
 
 
-# from kotak_api_wn.logger import logger
+from .HSWebSocketLib import HSWebSocket, HSIWebSocket
+from .urls import WEBSOCKET_URL
 
 
 class NeoWebSocket:
-    def __init__(self, sid, token, server_id):
+    __slots__ = ('hsiWebsocket', 'is_hsi_open', 'un_sub_token', 'sid', 
+                 'access_token', 'server_id', 'is_hsw_open', 'quotes_arr',
+                 'sub_list', 'un_sub_list', 'un_sub_channel_token', 
+                 'hsWebsocket', 'channel_tokens', 'live_scrip_type',
+                 'on_message', 'on_error', 'on_close', 'on_open',
+                 'quotes_index', 'un_sub_list_count', 'un_sub_channel',
+                 'token_limit_reached', 'hsw_thread', 'hsi_thread', 
+                 'data_center', '_sublist_keys_cache')
+    
+    def __init__(self, sid, token, server_id, data_center):
         self.hsiWebsocket = None
         self.is_hsi_open = 0
         self.un_sub_token = False
@@ -50,22 +49,24 @@ class NeoWebSocket:
         self.token_limit_reached = False
         self.hsw_thread = None
         self.hsi_thread = None
+        self.data_center = data_center
+        self._sublist_keys_cache = set()
 
     def start_hsi_ping_thread(self):
         while self.hsiWebsocket and self.is_hsi_open:
             time.sleep(30)
-            payload = json_dumps({"type": "HB"})
-            self.hsiWebsocket.send(payload)
+            payload = {"type": "HB"}
+            self.hsiWebsocket.send(json.dumps(payload))
 
     def start_hsm_ping_thread(self):
         while self.hsWebsocket and self.is_hsw_open:
             time.sleep(29)
-            payload = json_dumps({"type": "hb"})
-            self.hsWebsocket.hs_send(payload)
+            payload = {"type": "hb"}
+            self.hsWebsocket.hs_send(json.dumps(payload))
 
     def start_websocket(self):
-        self.hsWebsocket = kotak_api_wn.HSWebSocket()
-        self.hsWebsocket.open_connection(kotak_api_wn.WEBSOCKET_URL, self.access_token, self.sid,
+        self.hsWebsocket = HSWebSocket()
+        self.hsWebsocket.open_connection(WEBSOCKET_URL, self.access_token, self.sid,
                                          self.on_hsm_open, self.on_hsm_message,
                                          self.on_hsm_error, self.on_hsm_close)
 
@@ -75,8 +76,8 @@ class NeoWebSocket:
 
     def on_hsm_open(self):
         # print("On Open Function in Neo Websocket")
-        req_params = json_dumps({"type": "cn", "Authorization": self.access_token, "Sid": self.sid})
-        self.hsWebsocket.hs_send(req_params)
+        req_params = {"type": "cn", "Authorization": self.access_token, "Sid": self.sid}
+        self.hsWebsocket.hs_send(json.dumps(req_params))
         if self.on_open:
             self.on_open()
 
@@ -85,9 +86,10 @@ class NeoWebSocket:
 
         # print("On Open Function in Neo Websocket")
         server = 'WEB'
-        json_d = json_dumps({"type": "CONNECTION", "Authorization": self.access_token,
+        json_d = {"type": "CONNECTION", "Authorization": self.access_token,
                   "Sid": self.sid,
-                  "source": server})
+                  "source": server}
+        json_d = json.dumps(json_d)
         self.hsiWebsocket.send(json_d)
 
         if self.on_open:
@@ -96,8 +98,8 @@ class NeoWebSocket:
     def on_hsm_message(self, message):
         # print("on Message Func in NeoWebsocket", message)
         if message:
-            if type(message) == str:
-                req_type = json_loads(message)[0]["type"]
+            if isinstance(message, str):
+                req_type = json.loads(message)[0]["type"]
                 if req_type == 'cn':
                     # print("INSIDE CONNECTION")
                     self.is_hsw_open = 1
@@ -109,19 +111,24 @@ class NeoWebSocket:
                         self.call_quotes()
                     if len(self.sub_list) >= 1:
                         self.subscribe_scripts(self.channel_tokens)
+                        # Update cache when subscribing
+                        self._update_sublist_cache()
                 if req_type == "unsub":
                     if len(self.un_sub_channel_token) > 0 and self.un_sub_channel:
                         # remove from sub_list and sub_token
                         self.remove_items(self.un_sub_channel_token[self.un_sub_channel])
                         del self.un_sub_channel_token[self.un_sub_channel]
+                        # Update cache when unsubscribing
+                        self._update_sublist_cache()
                     if len(self.un_sub_channel_token) == 0:
                         if self.token_limit_reached:
                             self.sub_list = []
                             self.channel_tokens = {}
                             self.un_sub_channel_token = {}
+                            self._sublist_keys_cache.clear()
                     if self.on_message:
                         self.on_message("Un-Subscribed Successfully!")
-            elif type(message) == list:
+            elif isinstance(message, list):
 
                     # print("raw message ",message)
 
@@ -146,26 +153,24 @@ class NeoWebSocket:
                         self.hsWebsocket.close()
 
 
-    def is_message_for_subscription(self,message):
+    def _update_sublist_cache(self):
+        """Update cached set of subscription keys for O(1) lookup."""
+        self._sublist_keys_cache = {outer_key for data_dict in self.sub_list for outer_key in data_dict}
+    
+    def is_message_for_subscription(self, message):
         # print("message ==== ",message)
-        is_for_sub = False
-        keys_in_sublist = list({outer_key for data_dict in self.sub_list for outer_key in data_dict})
-        # print("sublist keys ",keys_in_sublist)
+        # Use cached set for O(1) lookup instead of list comprehension
         for item in message:
-            if 'tk' in item:
-                if item['tk'] in keys_in_sublist:
-                    is_for_sub = True
-
-            if is_for_sub:
-                break
-        return is_for_sub
+            if 'tk' in item and item['tk'] in self._sublist_keys_cache:
+                return True
+        return False
         
 
     def on_hsi_message(self, message):
         # print("HSI on message called here")
         if message:
             if isinstance(message, str):
-                req = json_loads(message)
+                req = json.loads(message)
                 if req["type"] == 'cn':
                     self.is_hsi_open = 1
                     threading.Thread(target=self.start_hsi_ping_thread).start()
@@ -296,7 +301,7 @@ class NeoWebSocket:
                 if quote_type.strip().lower() == 'market_depth':
                     scrip_type = ReqTypeValues.get("SNAP_DP")
         
-        req_params = json_dumps({"type": scrip_type, "scrips": scrips, "channelnum": QuotesChannel})
+        req_params = json.dumps({"type": scrip_type, "scrips": scrips, "channelnum": QuotesChannel})
         self.hsWebsocket.hs_send(req_params)
 
     def quote_type_validation(self, quote_type):
@@ -307,45 +312,13 @@ class NeoWebSocket:
                 Q_type = False
         return Q_type
 
-    def get_quotes(self, instrument_tokens, quote_type=None, isIndex=None):
-        if self.quote_type_validation(quote_type):
-            self.quotes_index = isIndex
-            # self.quotes_api_callback = callback
-            if self.input_validation(instrument_tokens):
-                for item in instrument_tokens:
-                    key = item['instrument_token']
-                    value = {'instrument_token': item['instrument_token'],
-                             'exchange_segment': item['exchange_segment']}
-                    if key not in [list(x.keys())[0] for x in self.quotes_arr]:
-                        self.quotes_arr.append({key: value, "quote_type": quote_type})
-                    else:
-                        index = [list(x.keys())[0] for x in self.quotes_arr].index(key)
-                        self.quotes_arr[index][key].update(value)
-
-                if self.hsWebsocket and self.is_hsw_open == 1:
-                    self.call_quotes()
-                else:
-                    self.start_websocket_thread()
-
-            else:
-                return Exception("Invalid Inputs")
-        else:
-            try:
-                raise ValueError(json_dumps({"Error": "Quote Type which is given is not matching",
-                                         "Expected Values for quote_type": ['market_depth', 'ohlc', 'ltp',
-                                                                            '52w',
-                                                                            'circuit_limits',
-                                                                            'scrip_details']}))
-            except ValueError as e:
-                print(str(e))
-
     def subscribe_scripts(self, channel_tokens):
         # print("self.channel_tokens.items()", self.channel_tokens)
         for channel, token_list in channel_tokens.items():
             for tokens in token_list:
                 tokens = list(tokens.values())
                 scrips = self.format_tokens_live(tokens[0])
-                req_params1 = json_dumps(
+                req_params1 = json.dumps(
                     {"type": tokens[0]["subscription_type"], "scrips": scrips, "channelnum": channel})
                 self.hsWebsocket.hs_send(req_params1)
 
@@ -609,7 +582,7 @@ class NeoWebSocket:
             scrips = self.format_un_sub_list(tokens_list)
             self.un_sub_channel = channels
             channel, sub_type = channels.split('-')
-            req_params1 = json_dumps(
+            req_params1 = json.dumps(
                 {"type": sub_type, "scrips": scrips, "channelnum": channel})
             self.hsWebsocket.hs_send(req_params1)
 
@@ -655,13 +628,24 @@ class NeoWebSocket:
 
             # else:
             #     self.un_sub_token = True
-            #     self.hsWebsocket = kotak_api_wn.HSWebSocket()
-            #     self.hsWebsocket.open_connection(kotak_api_wn.WEBSOCKET_URL, self.access_token, self.sid,
+            #     self.hsWebsocket = HSWebSocket()
+            #     self.hsWebsocket.open_connection(WEBSOCKET_URL, self.access_token, self.sid,
             #                                      self.on_open, self.on_message, self.on_error, self.on_close)
 
     def start_hsi_websocket(self):
-        url = ORDER_FEED_URL.format(server_id=self.server_id)
-        self.hsiWebsocket = kotak_api_wn.HSIWebSocket()
+        url = ORDER_FEED_URL
+        if self.data_center:
+            if self.data_center.lower() == 'adc':
+                url = ORDER_FEED_URL_ADC
+            elif self.data_center.lower() == 'e21':
+                url = ORDER_FEED_URL_E21
+            elif self.data_center.lower() == 'e22':
+                url = ORDER_FEED_URL_E22
+            elif self.data_center.lower() == 'e41':
+                url = ORDER_FEED_URL_E41
+            elif self.data_center.lower() == 'e43':
+                url = ORDER_FEED_URL_E43
+        self.hsiWebsocket = HSIWebSocket()
         self.hsiWebsocket.open_connection(url=url, onopen=self.on_hsi_open,
                                           onmessage=self.on_hsi_message,
                                           onclose=self.on_hsi_close,

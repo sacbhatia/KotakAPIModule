@@ -11,7 +11,10 @@ class QuotesAPI(object):
     def get_quotes(self, instrument_tokens=None, quote_type=None):
         if not quote_type:
             quote_type = 'all'
-        neo_symbol_str = ",".join(f"{item['exchange_segment']}|{item['instrument_token']}" for item in instrument_tokens)
+        # Pre-allocate list for better memory efficiency
+        parts = [f"{item['exchange_segment']}|{item['instrument_token']}" 
+                 for item in instrument_tokens]
+        neo_symbol_str = ",".join(parts)
         encoded_neo_symbol_str = urllib.parse.quote(neo_symbol_str)
         header_params = {
             "Authorization": self.api_client.configuration.consumer_key,

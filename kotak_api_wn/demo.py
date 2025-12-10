@@ -1,6 +1,6 @@
-# from neo_api_client import NeoAPI
+# from .neo_api import NeoAPI
 import io
-import neo_api_client
+from .neo_api import NeoAPI
 import threading
 
 
@@ -13,17 +13,21 @@ def on_error(message):
     print('[OnError]: ', result)
 
 
-client = neo_api_client.NeoAPI(consumer_key="f1X7OfHF2zLjMtSTT7C1PnLWDd0a",
-                               consumer_secret="p3JilRTebrOUNBCfO8yQ_AhuKv0a", environment='prod',
+# Example usage - Replace with your actual credentials
+client = NeoAPI(consumer_key="YOUR_CONSUMER_KEY",
+                               environment='prod',
                                on_message=on_message,
                                on_error=on_error)
-# client = neo_api_client.NeoAPI(access_token='',
-#                                environment='prod', on_message=on_message,
-#                                on_error=on_error)
-client.login(mobilenumber="", password="CCCCCCC")
-a = client.session_2fa("OTP")
-print(a)
-# print(client.search_scrip(exchange_segment="nse_fo", symbol="ICICI", expiry="", option_type="CE",strike_price=">505"))
+
+# For TOTP authentication (recommended):
+client = NeoAPI(consumer_key="YOUR_CONSUMER_KEY", environment='prod')
+totp_response = client.totp_login(mobile_number="YOUR_MOBILE", ucc="YOUR_UCC", totp="123456")
+client.totp_validate(mpin="YOUR_MPIN")
+
+# Legacy broker login (deprecated):
+# client.login(mobilenumber="YOUR_MOBILE", password="YOUR_PASSWORD")
+# client.session_2fa("YOUR_OTP")
+
+# Example API calls
 print(client.search_scrip(exchange_segment="nse_fo", symbol="BANKNIFTY", expiry="", option_type="CE",strike_price="45000"))
-# client.subscribe_to_orderfeed()
-# print(type(a))
+client.subscribe_to_orderfeed()
