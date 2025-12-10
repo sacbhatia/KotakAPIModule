@@ -4,17 +4,37 @@
 
 - **Python 3.8+** is required
 - **pip** package manager
-- Kotak Neo API credentials (consumer key and consumer secret)
+- Kotak Neo API credentials (consumer key)
+
+## ⚠️ Important: Version Selection
+
+**This package has two versions:**
+- **v2 branch** (Recommended) - Latest Kotak Neo API v2 with optimizations
+- **master branch** - Legacy v1 (deprecated)
+
+**Always install from the v2 branch for the latest features and performance improvements.**
 
 ## Installation Methods
 
-### Method 1: Local Development Installation (Recommended)
+### Method 1: Direct from GitHub (Recommended)
+
+Install v2 directly without cloning:
+
+```bash
+# Basic installation (v2 branch)
+pip install git+https://github.com/wavenodes/KotakAPIModule.git@v2
+
+# With performance optimizations (recommended)
+pip install "git+https://github.com/wavenodes/KotakAPIModule.git@v2#egg=kotak_api_wn[fast]"
+```
+
+### Method 2: Local Development Installation
 
 For development or to use the latest optimized version:
 
 ```bash
-# Clone the repository and navigate to it
-git clone https://github.com/wavenodes/KotakAPIModule.git
+# Clone the v2 branch specifically
+git clone -b v2 https://github.com/wavenodes/KotakAPIModule.git
 cd KotakAPIModule
 
 # Install in development mode (editable)
@@ -135,9 +155,19 @@ pip install --only-binary :all: orjson
 
 ## Upgrading
 
+### From GitHub Install
 ```bash
-# Pull latest changes (if using git)
-git pull
+# Reinstall latest v2
+pip install --upgrade --force-reinstall "git+https://github.com/wavenodes/KotakAPIModule.git@v2#egg=kotak_api_wn[fast]"
+```
+
+### From Local Development
+```bash
+# Ensure you're on v2 branch
+git checkout v2
+
+# Pull latest changes
+git pull origin v2
 
 # Reinstall
 pip install -e ".[fast]" --upgrade

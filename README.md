@@ -54,20 +54,29 @@ print(response)
 
 ## 📦 Installation
 
-### Basic Installation
+### From GitHub (v2 - Recommended)
 ```bash
-pip install -e .
+# Install v2 branch directly from GitHub
+pip install git+https://github.com/wavenodes/KotakAPIModule.git@v2
+
+# With performance optimizations (recommended)
+pip install "git+https://github.com/wavenodes/KotakAPIModule.git@v2#egg=kotak_api_wn[fast]"
 ```
 
-### With Performance Optimizations (Recommended)
+### Local Development
 ```bash
+# Clone v2 branch
+git clone -b v2 https://github.com/wavenodes/KotakAPIModule.git
+cd KotakAPIModule
+
+# Install in editable mode
 pip install -e ".[fast]"
 ```
 
-### Full Installation
-```bash
-pip install -e ".[all]"
-```
+### Installation Options
+- **Basic**: `pip install -e .`
+- **Fast** (recommended): `pip install -e ".[fast]"` - Includes orjson for 9x faster JSON
+- **Full**: `pip install -e ".[all]"` - All features
 
 ## 📊 Performance Improvements
 
