@@ -73,11 +73,13 @@ pip install -e ".[all]"
 
 | Operation | Original | Optimized | Improvement |
 |-----------|----------|-----------|-------------|
-| JSON Serialization | ~100μs | ~8μs | **12.8x faster** |
-| HTTP Request | ~50ms | ~35ms | **30% faster** |
-| API Instance Creation | ~5μs/call | ~1.8μs/call | **2.7x faster** |
-| Membership Testing | O(n) | O(1) | **1.6x faster** |
-| WebSocket Lookups | O(n) | O(1) | **29-37x faster** |
+| JSON Serialization | ~20.5μs | ~2.3μs | **9.0x faster** |
+| JSON Deserialization | ~15.1μs | ~5.5μs | **2.7x faster** |
+| WebSocket Lookups | ~327μs | ~12.2μs | **26.8x faster** |
+| API Instance Caching | ~1.0μs | ~0.5μs | **2.1x faster** |
+| Regex Pre-compilation | ~6.2μs | ~3.2μs | **1.9x faster** |
+| Validation (Frozenset) | ~23.3μs | ~14.9μs | **1.6x faster** |
+| HTTP Session Pooling | ~1089μs | ~831μs | **1.3x faster** |
 
 ## 📖 Documentation
 
